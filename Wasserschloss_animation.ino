@@ -7,16 +7,14 @@
 
 CRGB leds[NUM_LEDS];            // Array to hold LED data
 #define BRIGHTNESS  100          // Brightness level (0-255)
-#define DELAY_TIME  50          // Delay between each row turning on/off (in milliseconds)
-#define DAMP_FACTOR 0.9          // Dampening factor for oscillation (smaller number = more dampening)
+#define DELAY_TIME  22          // Delay between each row turning on/off (in milliseconds)
 
-int mutt_50;
-int currentLevel;
-int levelInitdropKSA = 5;
-int levelTodrop = 10;             // Percentage of the full height (initially 100%)
-int rowToClearTo;                 // Number of rows to turn off based on drop level
-       // Current level of LEDs
-bool oscillating = false;        // Flag for oscillation state
+int dampFactor;         // Dampening factor for oscillation (smaller number = more dampening)
+float alpha;             // Winkel in radians für sinus Schwingung
+int wsNormlevel;
+int oscLowlevel;      //untere Grenze der Oszillation   
+int oscHighlevel;     //obere Grenze der Oszilattion
+int wsKsopen;         // Wasserschloss Level wenn der Kugelschieber offen ist
 
 void setup() {
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
@@ -26,26 +24,19 @@ void setup() {
 }
 
 void loop() {
-  mutt_50 = HEIGHT*0.7;
-  currentLevel = mutt_50;
+  wsNormlevel = HEIGHT-5;  //WS_level ist 5.0 m unter Muttsee
+  wsKsopen = 45;           // nach dem Öffnen der KS schwingt sich das System auf diese Niveau ein
 
-  //case 1 Kugelschieber geschlossen, WS_level ist 50 m unter Muttsee
-  // Light up the matrix in blue up to mutt_50
-  for (int row = 0; row < mutt_50; row++) {
+  //case 1 Kugelschieber geschlossen, 
+  // Matrix bis wsNormlevel blau beleuchten
+  for (int row = 0; row < wsNormlevel; row++) {
     lightRow(row);
   }
-  delay(10000); // wait to demonstrate case 1
+  delay(5000); // wait to demonstrate case 1
 
-  // case 2: Kugelschieber wird geöffnet, drop to the initial low level
-  // Calculate the number of rows to clear based on the percentage
-  rowToClearTo = levelInitdropKSA;
-  dropToLevel(rowToClearTo);
-  delay(DELAY_TIME); //hold at the low position
-
-  // then begin oscillation
-  oscillating = true;
-  dampenedOscillation();
-  delay(10000);
+  // case 2: Kugelschieber wird geöffnet, Abfall zu oscLowlevel und gedämpfte Schwingung
+  dampenedOscillation(wsKsopen);
+  delay(5000);
 }
 
 // Function to light up a specific row with blue color
@@ -66,41 +57,29 @@ void clearRow(int row) {
   FastLED.show();                   // Update the LEDs to show the changes
 }
 
-// Function to drop LEDs from the current level to the desired level
-void dropToLevel(int targetRowsToClear) {
-  for (int row = currentLevel - 1; row >= targetRowsToClear; row--) {
-    clearRow(row);
-    delay(DELAY_TIME);
-  }
-  currentLevel = targetRowsToClear;   // Update the current level after the drop
-}
-
 // Function to implement dampened oscillation
-void dampenedOscillation() {
-  int amplitude = (HEIGHT - rowToClearTo) / 2;   // Initial amplitude for the oscillation
+void dampenedOscillation(int midLevel) {
+  int startLevel = wsNormlevel;
+  alpha = 0; // start bei max. Amplitude, Winkel 0, cos = 1
 
+  float amplitude = startLevel - midLevel;   // Initial amplitude for the oscillation
+  
   while (amplitude > 0) {
-    // Rise up by the amplitude
-    for (int row = currentLevel; row < currentLevel + amplitude && row < HEIGHT; row++) {
-      lightRow(row);
-      delay(DELAY_TIME);
-    }
-
-    // Fall back by the amplitude
-    for (int row = currentLevel + amplitude - 1; row >= currentLevel; row--) {
+    // Drop by the amplitude
+    for (int row = startLevel; row >= midLevel-amplitude; row--) {
       clearRow(row);
       delay(DELAY_TIME);
     }
-
+    startLevel = midLevel - amplitude;
+    alpha = alpha+0.1;
+    amplitude = amplitude*cos(alpha);
+    // Rise up by the amplitude
+    for (int row = startLevel; row < midLevel+amplitude; row++) {
+      lightRow(row);
+      delay(DELAY_TIME);
+    }
+    startLevel =  midLevel + amplitude;
     // Reduce amplitude by the dampening factor
-    amplitude = amplitude * DAMP_FACTOR;
+    amplitude = amplitude * cos(alpha);
   }
-
-  // Once the oscillation dampens, rise back up to the target level
-  for (int row = currentLevel; row < rowToClearTo; row++) {
-    lightRow(row);
-    delay(DELAY_TIME);
-  }
-  currentLevel = rowToClearTo;  // Set current level to the final level
-  oscillating = false;         // End oscillation
 }
