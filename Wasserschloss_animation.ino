@@ -6,7 +6,7 @@
 #define NUM_LEDS    WIDTH * HEIGHT  // Total number of LEDs
 
 CRGB leds[NUM_LEDS];            // Array to hold LED data
-#define BRIGHTNESS  100          // Brightness level (0-255)
+#define BRIGHTNESS  150          // Brightness level (0-255)
 #define DELAY_TIME  22          // Delay between each row turning on/off (in milliseconds)
 
 int dampFactor;         // Dampening factor for oscillation (smaller number = more dampening)
