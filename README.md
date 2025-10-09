@@ -1,7 +1,6 @@
 # PSW_Wasserschloss
-Vorbereitung für das Wasserschloss im projekt PSW Limmern
+Programme für das Wasserschloss und das UWS Display im Projekt PSW Limmern
 
-Variante 1 nur Simulation
-Variante 2 mit Knöpfen, die die verschiedenen Cases schalten
+Wasserschloss: Simulation ist getestet, die Funktion der Knöpfe ist noch zu definieren und wenn alles funktioniert den DEBUG_MODE auf false setzen
 
-beide Varianten getestet und sollten funktionieren, Variante 2 ist moderner und sicherer
+UWS Display_ nur rudimentäre Servo Bewegung: Steuerung mit Knöpfen ist noch zu implementieren!!
