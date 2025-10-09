@@ -1,4 +1,5 @@
-/* Bernhard Pleschko, Makers im Zigerschlitz, 29.7.2025
+/* Version 22 - cleanup version
+Bernhard Pleschko, Makers im Zigerschlitz, 9.10.2025
 Animation für das Wasserschloss mit ESP32
 Es werden 4 Fälle gezeigt, gesteuert durch HIGH Signal auf dem jeweiligen Pin:
 * Input 1 = Wasser schwankt nach oben 
@@ -7,20 +8,33 @@ Es werden 4 Fälle gezeigt, gesteuert durch HIGH Signal auf dem jeweiligen Pin:
 * Input 4 = Wasser schwankt stark nach unten
 Dazwischen wird jeweils dasselbe Ruheniveau eingestellt.
 
-Sperre für alle Tasten wenn eine Taste aufgerufen ist und das Programm läuft!!
-Achtung: PULLUP Solution, die Taster müssen nur auf GND verbinden!
+Sperre für alle Tasten wenn eine Taste aufgerufen ist und das Programm läuft ist in der Animation automatisch inkludiert
 */
-#include <FastLED.h>
-#include <math.h>
+
+#include <FastLED.h> //Library für LED Matrix
+#include <math.h>    //Library für Winkelfunktionen (cos)
+
+// --- Debugging Toggle ---
+#define DEBUG_MODE true // auf false setzen für die finale version (no Serial output)
+
+#if DEBUG_MODE
+  #define DEBUG_BEGIN(x)    Serial.begin(x)
+  #define DEBUG_PRINT(x)    Serial.print(x)
+  #define DEBUG_PRINTLN(x)  Serial.println(x)
+#else
+  #define DEBUG_BEGIN(x)
+  #define DEBUG_PRINT(x)
+  #define DEBUG_PRINTLN(x)
+#endif
 
 // --- Hardware Konfiguration ---
-#define LED_PIN     16          // Dein Pin für die LEDs
+#define LED_PIN     16          // ESP32 Pin für die Datenleitung der LED Matrix
 #define WIDTH       8           // Matrix Breite
-#define HEIGHT      64          // Matrix Höhe (volle 64 Reihen)
+#define HEIGHT      64          // Matrix Höhe (volle 64 Reihen, 2x32 in Reihe)
 #define NUM_LEDS    WIDTH * HEIGHT  // Gesamte Anzahl LEDs
 
-// --- Tasten Pins (Passe diese an deine ESP32 GPIOs an!) ---
-const int buttonPins[] = {17, 18, 19, 21}; // Beispiel-GPIOs, bitte ANPASSEN!
+// --- ESP32 Pins für die Tastensteuerung ---
+const int buttonPins[] = {17, 18, 19, 21}; // Pin17 für Input 1, Pin18 für Input 2, Pin 19 für Input 3, Pin21 für Input 4
 
 // --- Debouncing Variablen für jede Taste ---
 unsigned long lastDebounceTime[] = {0, 0, 0, 0};
@@ -37,20 +51,20 @@ CRGB leds[NUM_LEDS];
 const int wsNiveau_Ruhe = 40;   // Wasserniveau im Ruhezustand (Basishöhe der Säule)
 int currentSchwingungsHoehe = wsNiveau_Ruhe;
 
-enum AnimationState {
+enum AnimationState {   //Zuweisung der Zustände Ruhe und 1-4
   STATE_IDLE,
   STATE_OSCILLATE_UP_SOFT,
   STATE_OSCILLATE_DOWN_SOFT,
   STATE_OSCILLATE_UP_STRONG,
   STATE_OSCILLATE_DOWN_STRONG
 };
+
 AnimationState currentAnimationState = STATE_IDLE; // Start im Ruhezustand
 
 // --- Flag für die einmalige Initialisierung im Loop ---
 bool initialMatrixSetupDone = false;
 
-
-// --- Funktions-Prototypen ---
+// --- Funktions-Prototypen für alle Hilfsfunktionen---
 void lightRow(int row);
 void clearRow(int row);
 int getMatrixIndex(int col, int row);
@@ -58,10 +72,11 @@ void dampenedOscillation_down(int input_amplitude);
 void dampenedOscillation_up(int input_amplitude);
 
 void setup() {
-  Serial.begin(115200);
+  delay(100); //kurzes Delay für sicheren Start mit externer Stromversorgung
+  DEBUG_BEGIN(115200);
 
   for (int i = 0; i < 4; i++) {
-    pinMode(buttonPins[i], INPUT_PULLUP);
+    pinMode(buttonPins[i], INPUT_PULLUP); // Achung: Buttons sind mit PULLUP konfiguriert, Anschluss nur GND und ButtonPin
   }
 
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
@@ -70,10 +85,9 @@ void setup() {
   currentAnimationState = STATE_IDLE;
 }
 
-
 void loop() {
-  // --- Einmalige Initialisierung der Matrix im Loop ---
-  if (!initialMatrixSetupDone) {
+  // --- Einmalige Initialisierung der Matrix und Anzeige des Ruhezustandes
+  if (!initialMatrixSetupDone) {    //Überprüfung ob erste Initialisierung schon durchgeführt ist, wird bei weiteren Durchläufen übersprungen
     FastLED.clear();
     for (int row = 0; row < wsNiveau_Ruhe; row++) {
         for (int col = 0; col < WIDTH; col++) {
@@ -82,7 +96,6 @@ void loop() {
     }
     FastLED.show();
     initialMatrixSetupDone = true;
-    Serial.println("Erste Matrix-Initialisierung im Loop abgeschlossen (blau bis Reihe 40).");
     delay(1000);
   }
 
@@ -90,8 +103,8 @@ void loop() {
   static unsigned long lastLoopPrint = 0;
   if (millis() - lastLoopPrint > 2000) {
     lastLoopPrint = millis();
-    Serial.print("Loop läuft. Aktueller Zustand (currentAnimationState): ");
-    Serial.println(currentAnimationState);
+    DEBUG_PRINT("Loop läuft. Aktueller Zustand (currentAnimationState): ");
+    DEBUG_PRINTLN(currentAnimationState);
   }
 
   // --- Tastenabfrage und Robustes Debouncing ---
@@ -102,54 +115,51 @@ void loop() {
     if (reading != buttonReadingState[i]) {
       lastDebounceTime[i] = millis(); // Setze Debounce-Timer neu
       buttonReadingState[i] = reading; // Aktualisiere den "vorläufigen" Zustand
-      Serial.print("DEBUG: Button "); Serial.print(i + 1); Serial.print(" raw reading changed to: "); Serial.println(reading);
+      DEBUG_PRINT("DEBUG: Button "); DEBUG_PRINT(i + 1); DEBUG_PRINT(" raw reading changed to: "); DEBUG_PRINTLN(reading);
     }
 
     // Wenn seit dem letzten Wechsel des "vorläufigen" Zustands genug Zeit vergangen ist
     if ((millis() - lastDebounceTime[i]) > debounceDelay) {
       // Wenn der "vorläufige" Zustand sich vom *stabilen* Zustand unterscheidet
-      if (buttonReadingState[i] != lastButtonState[i]) {
-        // Dann ist der neue stabile Zustand etabliert
-        lastButtonState[i] = buttonReadingState[i]; // Aktualisiere den stabilen Zustand
-        Serial.print("DEBUG: Button "); Serial.print(i + 1); Serial.print(" STABLE state changed to: "); Serial.println(lastButtonState[i]);
+      if (buttonReadingState[i] != lastButtonState[i]) { // Stabiler Zustandswechsel erkannt
 
-        // Jetzt prüfen wir auf die Flanke (von HIGH auf LOW) mit dem STABILEN Zustand
-        if (lastButtonState[i] == LOW) { // Button ist jetzt STABIL GEDRÜCKT (LOW)
-          Serial.print("DEBUG: Tastendruck (LOW) an Button "); Serial.print(i + 1); Serial.println(" erkannt (STABIL nach Debounce).");
-          Serial.print("DEBUG: currentAnimationState: "); Serial.print(currentAnimationState);
-          Serial.print(" (STATE_IDLE ist "); Serial.print(STATE_IDLE); Serial.println(")");
+        // Animation nur starten, wenn die Taste von LOW auf HIGH wechselt (LOSLASSEN)
+        if (buttonReadingState[i] == HIGH && lastButtonState[i] == LOW) { // Button ist jetzt STABIL NICHT GEDRÜCKT (HIGH), und war vorher GEDRÜCKT (LOW)
+          DEBUG_PRINT("DEBUG: Taste "); DEBUG_PRINT(i + 1); DEBUG_PRINTLN(" LOSGELASSEN (STABIL nach Debounce).");
+          DEBUG_PRINT("DEBUG: currentAnimationState: "); DEBUG_PRINT(currentAnimationState);
+          DEBUG_PRINT(" (STATE_IDLE ist "); DEBUG_PRINT(STATE_IDLE); DEBUG_PRINTLN(")");
 
-          Serial.print("DEBUG: Bedingung 'currentAnimationState == STATE_IDLE' ist: ");
           if (currentAnimationState == STATE_IDLE) {
-            Serial.println("TRUE - SOLLTE JETZT ANIMATION STARTEN.");
+            DEBUG_PRINTLN("TRUE - SOLLTE JETZT ANIMATION STARTEN.");
             switch (i) {
               case 0:
-                currentSchwingungsHoehe = 10;
+                currentSchwingungsHoehe = 8;
                 currentAnimationState = STATE_OSCILLATE_UP_SOFT;
-                Serial.println("ACTION: Taste 1 gedrückt: Sanft UP");
+                DEBUG_PRINTLN("ACTION: Taste 1 gedrückt: Sanft UP");
                 break;
               case 1:
-                currentSchwingungsHoehe = 10;
+                currentSchwingungsHoehe = 8;
                 currentAnimationState = STATE_OSCILLATE_DOWN_SOFT;
-                Serial.println("ACTION: Taste 2 gedrückt: Sanft DOWN");
+                DEBUG_PRINTLN("ACTION: Taste 2 gedrückt: Sanft DOWN");
                 break;
               case 2:
-                currentSchwingungsHoehe = 18;
+                currentSchwingungsHoehe = 13;
                 currentAnimationState = STATE_OSCILLATE_UP_STRONG;
-                Serial.println("ACTION: Taste 3 gedrückt: Stark UP");
+                DEBUG_PRINTLN("ACTION: Taste 3 gedrückt: Stark UP");
                 break;
               case 3:
-                currentSchwingungsHoehe = 18;
+                currentSchwingungsHoehe = 13;
                 currentAnimationState = STATE_OSCILLATE_DOWN_STRONG;
-                Serial.println("ACTION: Taste 4 gedrückt: Stark DOWN");
+                DEBUG_PRINTLN("ACTION: Taste 4 gedrückt: Stark DOWN");
                 break;
             }
-            Serial.print("DEBUG: Animation für Button "); Serial.print(i + 1); Serial.print(" angefordert. Neuer Zustand: "); Serial.println(currentAnimationState);
+            DEBUG_PRINT("DEBUG: Animation für Button "); DEBUG_PRINT(i + 1); DEBUG_PRINT(" angefordert. Neuer Zustand: "); DEBUG_PRINTLN(currentAnimationState);
           } else {
-              Serial.print("DEBUG: Bedingung 'currentAnimationState == STATE_IDLE' ist: FALSE - Taste ignoriert. Aktueller Zustand: ");
-              Serial.println(currentAnimationState);
+              DEBUG_PRINT("DEBUG: Bedingung 'currentAnimationState == STATE_IDLE' ist: FALSE - Taste ignoriert. Aktueller Zustand: ");
+              DEBUG_PRINTLN(currentAnimationState);
           }
         }
+        lastButtonState[i] = buttonReadingState[i]; // Aktualisiere den stabilen Zustand
       }
     }
   }
@@ -157,23 +167,24 @@ void loop() {
   // --- Steuerung der Animationen basierend auf dem aktuellen Zustand ---
   switch (currentAnimationState) {
     case STATE_IDLE:
+      // Im Ruhezustand passiert hier nichts.
       break;
 
     case STATE_OSCILLATE_UP_SOFT:
     case STATE_OSCILLATE_UP_STRONG:
-      dampenedOscillation_up(currentSchwingungsHoehe);
-      currentAnimationState = STATE_IDLE;
-      Serial.println("DEBUG: Animation UP beendet. Zurück im Ruhezustand.");
+      dampenedOscillation_up(currentSchwingungsHoehe); // Animation abspielen
+      currentAnimationState = STATE_IDLE;             // Nach Beendigung zurück in den Ruhezustand
+      DEBUG_PRINTLN("DEBUG: Animation UP beendet. Zurück im Ruhezustand.");
       break;
 
     case STATE_OSCILLATE_DOWN_SOFT:
     case STATE_OSCILLATE_DOWN_STRONG:
-      dampenedOscillation_down(currentSchwingungsHoehe);
-      currentAnimationState = STATE_IDLE;
-      Serial.println("DEBUG: Animation DOWN beendet. Zurück im Ruhezustand.");
+      dampenedOscillation_down(currentSchwingungsHoehe); // Animation abspielen
+      currentAnimationState = STATE_IDLE;               // Nach Beendigung zurück in den Ruhezustand
+      DEBUG_PRINTLN("DEBUG: Animation DOWN beendet. Zurück im Ruhezustand.");
       break;
   }
-  delay(10);
+  delay(10); // Kleiner Delay, damit der Serial Monitor nicht überläuft.
 }
 
 // --- HILFSFUNKTIONEN ---
@@ -202,16 +213,23 @@ void clearRow(int targetRow) {
 
 void dampenedOscillation_down(int input_amplitude) {
   float alpha = 0.0;
-  float amplitude = input_amplitude;
-  Serial.print("INFO: Starte dampenedOscillation_down mit Amplitude: ");
-  Serial.println(input_amplitude);
+  float current_decaying_amplitude = input_amplitude; // Diese Amplitude wird jetzt gedämpft
+  float dampingFactor = 0.135; // NEU: Steuert die Dämpfungsstärke (0.01 für sehr langsam, 0.1 für schnell)
+
+  DEBUG_PRINT("INFO: Starte dampenedOscillation_down mit Amplitude: ");
+  DEBUG_PRINTLN(input_amplitude);
 
   int maxIterations = 200;
   int iterationCount = 0;
 
-  while (amplitude > 0.5 && iterationCount < maxIterations) {
-    int highLevel = wsNiveau_Ruhe + round(amplitude);
-    int lowLevel = wsNiveau_Ruhe - round(amplitude);
+  // Die Schleife läuft, solange die aktuelle, abklingende Amplitude über 0.5 ist
+  while (current_decaying_amplitude > 0.5 && iterationCount < maxIterations) {
+    // Die momentane Höhe der Welle wird aus der abklingenden Amplitude und cos(alpha) berechnet
+    float instantaneous_oscillation_height = current_decaying_amplitude * cos(alpha);
+    if (instantaneous_oscillation_height < 0) instantaneous_oscillation_height = -instantaneous_oscillation_height; // Amplitude immer positiv halten
+
+    int highLevel = wsNiveau_Ruhe + round(instantaneous_oscillation_height);
+    int lowLevel = wsNiveau_Ruhe - round(instantaneous_oscillation_height);
 
     highLevel = constrain(highLevel, 0, HEIGHT - 1);
     lowLevel = constrain(lowLevel, 0, HEIGHT - 1);
@@ -233,12 +251,12 @@ void dampenedOscillation_down(int input_amplitude) {
       delay(DELAY_TIME);
     }
 
-    alpha += 0.15;
-    amplitude = input_amplitude * cos(alpha);
-    if (amplitude < 0) amplitude = -amplitude;
+    alpha += 0.1; // Erhöht den Winkel für die nächste Phase der Schwingung
+    // Hier wird die Amplitude tatsächlich gedämpft!
+    current_decaying_amplitude *= (1.0 - dampingFactor); // Reduziert die Amplitude um einen Faktor
     iterationCount++;
   }
-  Serial.print("INFO: dampenedOscillation_down beendet nach "); Serial.print(iterationCount); Serial.println(" Iterationen.");
+  DEBUG_PRINT("INFO: dampenedOscillation_down beendet nach "); DEBUG_PRINT(iterationCount); DEBUG_PRINTLN(" Iterationen.");
 
   FastLED.clear();
   for (int row = 0; row < wsNiveau_Ruhe; row++) {
@@ -247,21 +265,28 @@ void dampenedOscillation_down(int input_amplitude) {
       }
   }
   FastLED.show();
-  Serial.println("INFO: Ruhe-Niveau wiederhergestellt.");
+  DEBUG_PRINTLN("INFO: Ruhe-Niveau wiederhergestellt.");
 }
 
 void dampenedOscillation_up(int input_amplitude) {
   float alpha = 0.0;
-  float amplitude = input_amplitude;
-  Serial.print("INFO: Starte dampenedOscillation_up mit Amplitude: ");
-  Serial.println(input_amplitude);
+  float current_decaying_amplitude = input_amplitude; // Diese Amplitude wird jetzt gedämpft
+  float dampingFactor = 0.135; // NEU: Steuert die Dämpfungsstärke (0.01 für sehr langsam, 0.1 für schnell)
+
+  DEBUG_PRINT("INFO: Starte dampenedOscillation_up mit Amplitude: ");
+  DEBUG_PRINTLN(input_amplitude);
 
   int maxIterations = 200;
   int iterationCount = 0;
 
-  while (amplitude > 0.5 && iterationCount < maxIterations) {
-    int highLevel = wsNiveau_Ruhe + round(amplitude);
-    int lowLevel = wsNiveau_Ruhe - round(amplitude);
+  // Die Schleife läuft, solange die aktuelle, abklingende Amplitude über 0.5 ist
+  while (current_decaying_amplitude > 0.5 && iterationCount < maxIterations) {
+    // Die momentane Höhe der Welle wird aus der abklingenden Amplitude und cos(alpha) berechnet
+    float instantaneous_oscillation_height = current_decaying_amplitude * cos(alpha);
+    if (instantaneous_oscillation_height < 0) instantaneous_oscillation_height = -instantaneous_oscillation_height; // Amplitude immer positiv halten
+
+    int highLevel = wsNiveau_Ruhe + round(instantaneous_oscillation_height);
+    int lowLevel = wsNiveau_Ruhe - round(instantaneous_oscillation_height);
 
     highLevel = constrain(highLevel, 0, HEIGHT - 1);
     lowLevel = constrain(lowLevel, 0, HEIGHT - 1);
@@ -283,12 +308,12 @@ void dampenedOscillation_up(int input_amplitude) {
       delay(DELAY_TIME);
     }
 
-    alpha += 0.15;
-    amplitude = input_amplitude * cos(alpha);
-    if (amplitude < 0) amplitude = -amplitude;
+    alpha += 0.1; // Erhöht den Winkel für die nächste Phase der Schwingung
+    // Hier wird die Amplitude tatsächlich gedämpft!
+    current_decaying_amplitude *= (1.0 - dampingFactor); // Reduziert die Amplitude um einen Faktor
     iterationCount++;
   }
-  Serial.print("INFO: dampenedOscillation_up beendet nach "); Serial.print(iterationCount); Serial.println(" Iterationen.");
+  DEBUG_PRINT("INFO: dampenedOscillation_up beendet nach "); DEBUG_PRINT(iterationCount); DEBUG_PRINTLN(" Iterationen.");
 
   FastLED.clear();
   for (int row = 0; row < wsNiveau_Ruhe; row++) {
@@ -297,5 +322,5 @@ void dampenedOscillation_up(int input_amplitude) {
       }
   }
   FastLED.show();
-  Serial.println("INFO: Ruhe-Niveau wiederhergestellt.");
+  DEBUG_PRINTLN("INFO: Ruhe-Niveau wiederhergestellt.");
 }
