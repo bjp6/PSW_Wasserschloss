@@ -1,4 +1,4 @@
-/* Servosteuerung für UWS Display Version vom 4.10.2025
+/* Servosteuerung für UWS Display Version vom 27.10.2025
 
  Es werden 2 Servomotoren DM996 angesteuert. Es gibt 4 Zustände:
  Schieber 1 offen
@@ -6,16 +6,16 @@
  Schieber 2 offen
  Schieber 2 Zu
 
- Der jeweilige Zustand wird über Knöpfe/ Schalter gesteuert, die genau Vorgehensweise und Ansteuerung ist noch nicht klar und auch nicht realisiert.
+ Der jeweilige Zustand wird über Knöpfe gesteuert, evtl. an die realisierte Verdrahtung anpassen
  */
 
 #include <ESP32Servo.h> // madhephaestus/ESP32Servo@^3.0.9
 #include <Button2.h>    // lennarthennigs/Button2 @ ^2.4.1
 
-Servo uwsServo1; // servo objekte ersetllen um Motoren zu steuern
+Servo uwsServo1; // servo objekte erstellen um Motoren zu steuern
 Servo uwsServo2;
 
-Button2 open1Button; // Button2 Objekte erstellen
+Button2 open1Button; // Button2 Objekte erstellen, die die Abläufe pro Knopfdruck festlegen
 Button2 close1Button;
 Button2 open2Button;
 Button2 close2Button;
