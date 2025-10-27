@@ -21,7 +21,7 @@ Button2 open2Button;
 Button2 close2Button;
 
 int pos = 0;        // variable für die Servowinkelposition
-int servoPin1 = 2;  // servo motor 1 mit pin D13 am ESP32 verbinden
+int servoPin1 = 13;  // servo motor 1 mit pin D13 am ESP32 verbinden
 int servoPin2 = 12; // servo motor 2 mit Pin D12 am ESP32 verbinden
 
 int open1ButtonPin = 25;
